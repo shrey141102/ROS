@@ -2,6 +2,14 @@
 ```
 https://emanual.robotis.com/docs/en/platform/turtlebot3/simulation/#gazebo-simulation
 ```
+```
+$ cd ~/catkin_ws/src/
+$ git clone -b kinetic-devel https://github.com/ROBOTIS-GIT/turtlebot3_simulations.git
+$ cd ~/catkin_ws && catkin_make
+```
+
+
+
 ### ActionLib 
 ```
 $ cd %YOUR_CATKIN_WORKSPACE%/src
