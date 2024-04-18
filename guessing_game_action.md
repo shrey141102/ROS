@@ -84,144 +84,109 @@ rosrun guessing_game_action guessing_game_client
 These steps should guide you through creating an action server and client in ROS Noetic for playing a guessing game using only integers and strings. Let me know if you have any questions! 😊
 
 
+Sure! Here's the Python implementation for the server and client:
 
-Certainly! Here's the server and client code for the guessing game example:
+**Server Code (guessing_game_server.py):**
+```python
+#!/usr/bin/env python
 
-**Server Code (guessing_game_server.cpp):**
-```cpp
-#include <ros/ros.h>
-#include <actionlib/server/simple_action_server.h>
-#include <guessing_game_action/GuessingGameAction.h>
-#include <cstdlib>
-#include <ctime>
+import rospy
+import actionlib
+from guessing_game_action.msg import GuessingGameAction, GuessingGameGoal, GuessingGameResult
 
-class GuessingGameServer {
-protected:
-  ros::NodeHandle nh_;
-  actionlib::SimpleActionServer<guessing_game_action::GuessingGameAction> as_;
-  std::string action_name_;
-  guessing_game_action::GuessingGameFeedback feedback_;
-  guessing_game_action::GuessingGameResult result_;
+class GuessingGameServer(object):
+    def __init__(self, name):
+        self._action_name = name
+        self._as = actionlib.SimpleActionServer(self._action_name, GuessingGameAction, execute_cb=self.execute_cb, auto_start = False)
+        self._as.start()
 
-public:
-  GuessingGameServer(std::string name) :
-    as_(nh_, name, boost::bind(&GuessingGameServer::executeCB, this, _1), false),
-    action_name_(name)
-  {
-    as_.start();
-    srand(time(0));
-  }
+    def execute_cb(self, goal):
+        success = True
+        feedback = GuessingGameResult()
+        target_number = rospy.get_param("~target_number", 42) # Default target number
 
-  ~GuessingGameServer(void) {}
+        rospy.loginfo("{}: Executing, target number is {}".format(self._action_name, target_number))
 
-  void executeCB(const guessing_game_action::GuessingGameGoalConstPtr &goal)
-  {
-    ros::Rate r(1);
-    bool success = true;
-    int32_t target_number = rand() % 100 + 1;
+        for attempts in range(10):
+            if self._as.is_preempt_requested():
+                rospy.loginfo("{}: Preempted".format(self._action_name))
+                self._as.set_preempted()
+                success = False
+                break
 
-    ROS_INFO("%s: Executing, target number is %d", action_name_.c_str(), target_number);
+            if goal.guess < target_number:
+                feedback.feedback = "Too low!"
+                self._as.publish_feedback(feedback)
+                rospy.loginfo("{}: Too low!".format(self._action_name))
+            elif goal.guess > target_number:
+                feedback.feedback = "Too high!"
+                self._as.publish_feedback(feedback)
+                rospy.loginfo("{}: Too high!".format(self._action_name))
+            else:
+                result = GuessingGameResult()
+                result.success = True
+                rospy.loginfo("{}: Succeeded".format(self._action_name))
+                self._as.set_succeeded(result)
+                break
 
-    for (int attempts = 0; attempts < 10; attempts++) {
-      if (as_.isPreemptRequested() || !ros::ok()) {
-        ROS_INFO("%s: Preempted", action_name_.c_str());
-        as_.setPreempted();
-        success = false;
-        break;
-      }
+            rospy.sleep(1)
 
-      if (goal->guess < target_number) {
-        feedback_.feedback = "Too low!";
-        as_.publishFeedback(feedback_);
-        ROS_INFO("%s: Too low!", action_name_.c_str());
-      } else if (goal->guess > target_number) {
-        feedback_.feedback = "Too high!";
-        as_.publishFeedback(feedback_);
-        ROS_INFO("%s: Too high!", action_name_.c_str());
-      } else {
-        result_.success = true;
-        ROS_INFO("%s: Succeeded", action_name_.c_str());
-        as_.setSucceeded(result_);
-        break;
-      }
+        if not success:
+            result = GuessingGameResult()
+            result.success = False
+            self._as.set_aborted(result)
 
-      r.sleep();
-    }
-
-    if (!success) {
-      result_.success = false;
-      as_.setAborted(result_);
-    }
-  }
-};
-
-int main(int argc, char** argv)
-{
-  ros::init(argc, argv, "guessing_game_server");
-
-  GuessingGameServer server("guessing_game");
-  
-  ros::spin();
-
-  return 0;
-}
+if __name__ == '__main__':
+    rospy.init_node('guessing_game_server')
+    server = GuessingGameServer(rospy.get_name())
+    rospy.spin()
 ```
 
-**Client Code (guessing_game_client.cpp):**
-```cpp
-#include <ros/ros.h>
-#include <actionlib/client/simple_action_client.h>
-#include <guessing_game_action/GuessingGameAction.h>
+**Client Code (guessing_game_client.py):**
+```python
+#!/usr/bin/env python
 
-typedef actionlib::SimpleActionClient<guessing_game_action::GuessingGameAction> Client;
+import rospy
+import actionlib
+from guessing_game_action.msg import GuessingGameAction, GuessingGameGoal
 
-void doneCallback(const actionlib::SimpleClientGoalState& state,
-                  const guessing_game_action::GuessingGameResultConstPtr& result)
-{
-  ROS_INFO("Game Finished!");
-  if (result->success)
-    ROS_INFO("Congratulations! You guessed it right!");
-  else
-    ROS_INFO("Oops! Out of attempts. Better luck next time!");
-  ros::shutdown();
-}
+def done_cb(status, result):
+    rospy.loginfo("Game Finished!")
+    if result.success:
+        rospy.loginfo("Congratulations! You guessed it right!")
+    else:
+        rospy.loginfo("Oops! Out of attempts. Better luck next time!")
+    rospy.signal_shutdown("Game Over")
 
-void activeCallback()
-{
-  ROS_INFO("Goal just went active");
-}
+def active_cb():
+    rospy.loginfo("Goal just went active")
 
-void feedbackCallback(const guessing_game_action::GuessingGameFeedbackConstPtr& feedback)
-{
-  ROS_INFO("Feedback: %s", feedback->feedback.c_str());
-}
+def feedback_cb(feedback):
+    rospy.loginfo("Feedback: {}".format(feedback.feedback))
 
-int main(int argc, char** argv)
-{
-  ros::init(argc, argv, "guessing_game_client");
+def main():
+    rospy.init_node('guessing_game_client')
 
-  if (argc != 2) {
-    ROS_INFO("Usage: guessing_game_client <guess>");
-    return 1;
-  }
+    if len(rospy.myargv()) != 2:
+        rospy.loginfo("Usage: guessing_game_client.py <guess>")
+        return
 
-  int32_t guess = atoi(argv[1]);
+    guess = int(rospy.myargv()[1])
 
-  Client client("guessing_game", true); // true -> don't need ros::spin()
+    client = actionlib.SimpleActionClient('guessing_game', GuessingGameAction)
+    rospy.loginfo("Waiting for action server to start.")
+    client.wait_for_server()
+    rospy.loginfo("Action server started, sending goal.")
 
-  ROS_INFO("Waiting for action server to start.");
-  client.waitForServer();
-  ROS_INFO("Action server started, sending goal.");
+    goal = GuessingGameGoal()
+    goal.guess = guess
 
-  guessing_game_action::GuessingGameGoal goal;
-  goal.guess = guess;
+    client.send_goal(goal, done_cb=done_cb, active_cb=active_cb, feedback_cb=feedback_cb)
 
-  client.sendGoal(goal, &doneCallback, &activeCallback, &feedbackCallback);
+    rospy.spin()
 
-  ros::spin();
-
-  return 0;
-}
+if __name__ == '__main__':
+    main()
 ```
 
-You can compile these files by adding them to the CMakeLists.txt of your package and then running `catkin_make`. After compilation, you can run the server and client using the instructions provided in the previous message. Let me know if you have any questions!
+You can save these Python scripts in your package's `src` directory. Ensure that you have the `guessing_game_action` package installed or available in your workspace. Then, you can run the server and client using the same instructions provided earlier. Let me know if you need further assistance!
